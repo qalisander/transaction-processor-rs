@@ -108,7 +108,7 @@ impl TrProcessor {
                     {
                         if !has_disputed {
                             return Err(anyhow!(
-                                "Charge backing not disputed transaction! tx: {tx}"
+                                "Trying to chargeback not disputed transaction! tx: {tx}"
                             ));
                         }
                         if tr_client != client {
