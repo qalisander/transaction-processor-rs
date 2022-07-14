@@ -61,7 +61,7 @@ impl TrProcessor {
                         amount,
                         has_disputed,
                     }) if has_disputed && tr_client == client => {
-                        if amount >= 0.0 {
+                        if amount.is_sign_positive() {
                             account.available += amount;
                             account.held -= amount;
                         }
@@ -100,6 +100,7 @@ impl TrProcessor {
 
 #[cfg(test)]
 mod test {
+    use rust_decimal_macros::dec;
     use super::*;
     use crate::TrType::*;
 
@@ -107,18 +108,18 @@ mod test {
     fn deposit_withdrawal() {
         let mut processor = TrProcessor::new();
         let trs = [
-            Tr::new(Withdrawal(100.0), 1, 1),
-            Tr::new(Withdrawal(50.0), 1, 2),
-            Tr::new(Withdrawal(200.0), 2, 3),
-            Tr::new(Withdrawal(200.0), 1, 4),
+            Tr::new(Deposit(dec!(100.0)), 1, 1),
+            Tr::new(Withdrawal(dec!(50.0)), 1, 2),
+            Tr::new(Deposit(dec!(200.0)), 2, 3),
+            Tr::new(Deposit(dec!(200.0)), 1, 4),
         ];
 
         processor.process(trs.into_iter());
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 250.0);
+        assert_eq!(info.available, dec!(250.0));
 
-        processor.process_single(Tr::new(Withdrawal(251.0), 1, 5));
-        assert_eq!(info.total, 250.0, "Not sufficient funds");
+        processor.process_single(Tr::new(Withdrawal(dec!(251.0)), 1, 5));
+        assert_eq!(info.total, dec!(250.0), "Not sufficient funds");
     }
 
     #[test]
@@ -126,38 +127,38 @@ mod test {
         let mut processor = TrProcessor::new();
         processor.process(
             [
-                Tr::new(Deposit(200.0), 1, 1),
-                Tr::new(Withdrawal(100.0), 1, 2),
+                Tr::new(Deposit(dec!(200.0)), 1, 1),
+                Tr::new(Withdrawal(dec!(100.0)), 1, 2),
             ]
             .into_iter(),
         );
 
         processor.process_single(Tr::new(Dispute, 1, 2));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 100.0);
-        assert_eq!(info.held, 0.0);
+        assert_eq!(info.available, dec!(100.0));
+        assert_eq!(info.held, dec!(0.0));
 
         processor.process_single(Tr::new(Resolve, 1, 2));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 100.0);
-        assert_eq!(info.held, 0.0);
+        assert_eq!(info.available, dec!(100.0));
+        assert_eq!(info.held, dec!(0.0));
 
         processor.process_single(Tr::new(Resolve, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(
-            info.available, 100.0,
+            info.available, dec!(100.0),
             "Can not resolve not disputed transaction"
         );
 
         processor.process_single(Tr::new( Dispute, 1,  1 ));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, -100.0);
-        assert_eq!(info.held, 200.0);
+        assert_eq!(info.available, dec!(-100.0));
+        assert_eq!(info.held, dec!(200.0));
 
         processor.process_single(Tr::new(Resolve,  1, 1 ));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 100.0);
-        assert_eq!(info.held, 0.0);
+        assert_eq!(info.available, dec!(100.0));
+        assert_eq!(info.held, dec!(0.0));
     }
 
     #[test]
@@ -165,8 +166,8 @@ mod test {
         let mut processor = TrProcessor::new();
         processor.process(
             [
-                Tr::new(Deposit(200.0), 1, 1),
-                Tr::new(Withdrawal(100.0), 1, 2),
+                Tr::new(Deposit(dec!(200.0)), 1, 1),
+                Tr::new(Withdrawal(dec!(100.0)), 1, 2),
             ]
             .into_iter(),
         );
@@ -174,24 +175,24 @@ mod test {
         processor.process_single(Tr::new(Chargeback, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(
-            info.available, 100.0,
+            info.available, dec!(100.0),
             "Can not chargeback not disputed transaction"
         );
 
         processor.process_single(Tr::new(Dispute, 1, 2));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 100.0);
-        assert_eq!(info.held, 0.0);
+        assert_eq!(info.available, dec!(100.0));
+        assert_eq!(info.held, dec!(0.0));
 
         processor.process_single(Tr::new(Chargeback, 1, 2));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 200.0);
-        assert_eq!(info.held, 0.0);
+        assert_eq!(info.available, dec!(200.0));
+        assert_eq!(info.held, dec!(0.0));
         assert!(info.locked);
 
         processor.process_single(Tr::new(Dispute, 1, 1));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, 200.0, "Account is locked. Same balance");
+        assert_eq!(info.available, dec!(200.0), "Account is locked. Same balance");
     }
 
     fn get_client_info(processor: &TrProcessor, client: u16) -> ClientRecord {

@@ -1,7 +1,11 @@
 use anyhow::{anyhow, Error, Result};
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
-type Money = f64;
+// alas, but: assert!(0.1 + 0.2 != 0.3_f64);
+// decimal is a bit more precise
+type Money = Decimal;
 
 //usage of #[serde(tag = "type")] is not possible because of bug
 //https://github.com/BurntSushi/rust-csv/issues/278
@@ -45,8 +49,8 @@ pub struct Account {
 impl Account {
     pub fn new() -> Self {
         Self {
-            available: 0.0,
-            held: 0.0,
+            available: dec!(0.0),
+            held: dec!(0.0),
             locked: false,
         }
     }
