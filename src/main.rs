@@ -2,7 +2,7 @@ use std::env::args;
 use std::fs::File;
 use std::io;
 
-use anyhow::{Error, Result};
+use anyhow::{Result};
 use csv::Trim;
 
 use crate::data::*;

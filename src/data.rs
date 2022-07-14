@@ -36,7 +36,6 @@ impl From<(&u16, &Account)> for ClientRecord {
     }
 }
 
-
 pub struct Account {
     pub available: Money,
     pub held: Money,
@@ -53,14 +52,26 @@ impl Account {
     }
 }
 
-// TODO: use struct Tr and TrType
 #[derive(Debug, Copy, Clone)]
-pub enum Tr {
-    Deposit { client: u16, tx: u32, amount: Money },
-    Withdrawal { client: u16, tx: u32, amount: Money },
-    Dispute { client: u16, tx: u32 },
-    Resolve { client: u16, tx: u32 },
-    Chargeback { client: u16, tx: u32 },
+pub struct Tr {
+    pub tp: TrType,
+    pub client: u16,
+    pub tx: u32,
+}
+
+impl Tr {
+    pub fn new(tp: TrType, client: u16, tx: u32) -> Self {
+        Self { tp, client, tx }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum TrType {
+    Deposit(Money),
+    Withdrawal(Money),
+    Dispute,
+    Resolve,
+    Chargeback,
 }
 
 impl TryFrom<TrRecord> for Tr {
@@ -69,21 +80,21 @@ impl TryFrom<TrRecord> for Tr {
     fn try_from(csv_row: TrRecord) -> Result<Self> {
         let client = csv_row.client;
         let tx = csv_row.tx;
-
-        match &*csv_row.tr_type {
+        let tr_type = match &*csv_row.tr_type {
             "deposit" => match csv_row.amount {
-                None => Err(anyhow!("Not valid amount!")),
-                Some(amount) => Ok(Tr::Deposit { client, tx, amount }),
+                None => Err(anyhow!("Not valid amount! tx: {tx}")),
+                Some(amount) => Ok(TrType::Deposit(amount)),
             },
             "withdrawal" => match csv_row.amount {
-                None => Err(anyhow!("Not valid amount!")),
-                Some(amount) => Ok(Tr::Withdrawal { client, tx, amount }),
+                None => Err(anyhow!("Not valid amount! tx: {tx}")),
+                Some(amount) => Ok(TrType::Withdrawal(amount)),
             },
-            "dispute" => Ok(Tr::Dispute { tx, client }),
-            "resolve" => Ok(Tr::Resolve { tx, client }),
-            "chargeback" => Ok(Tr::Chargeback { tx, client }),
-            _ => Err(anyhow!("Not valid csv row!")),
-        }
+            "dispute" => Ok(TrType::Dispute),
+            "resolve" => Ok(TrType::Resolve),
+            "chargeback" => Ok(TrType::Chargeback),
+            _ => Err(anyhow!("Not valid csv row! tx: {tx}")),
+        };
+        tr_type.map(|tp| Tr { tp, tx, client })
     }
 }
 
@@ -95,6 +106,10 @@ pub struct TrInfo {
 
 impl TrInfo {
     pub fn new(client: u16, amount: Money) -> Self {
-        Self { client, amount, has_disputed: false }
+        Self {
+            client,
+            amount,
+            has_disputed: false,
+        }
     }
 }

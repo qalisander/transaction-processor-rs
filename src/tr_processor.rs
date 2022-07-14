@@ -1,6 +1,5 @@
 use crate::data::*;
 use std::collections::HashMap;
-use std::slice::Iter;
 
 pub struct TrProcessor {
     tx_to_tr_info: HashMap<u32, TrInfo>,
@@ -17,30 +16,24 @@ impl TrProcessor {
 
     pub fn process(&mut self, trs: impl Iterator<Item = Tr>) {
         for tr in trs {
-            match tr {
-                Tr::Deposit { client, tx, amount } => {
-                    let account = self
-                        .client_to_account
-                        .entry(client)
-                        .or_insert_with(Account::new);
-                    if account.locked {
-                        continue;
-                    }
+            let tx = tr.tx;
+            let client = tr.client;
+            let account = self
+                .client_to_account
+                .entry(client)
+                .or_insert_with(Account::new);
+            if account.locked {
+                continue;
+            }
 
+            match tr.tp {
+                TrType::Deposit(amount) => {
                     account.available += amount;
                     self.tx_to_tr_info
                         .insert(tx, TrInfo::new(client, amount))
                         .and_then::<(), _>(|_| panic!("Not unique tx! tx: {tx}"));
                 }
-                Tr::Withdrawal { client, tx, amount } => {
-                    let account = self
-                        .client_to_account
-                        .entry(client)
-                        .or_insert_with(Account::new);
-                    if account.locked {
-                        continue;
-                    }
-
+                TrType::Withdrawal(amount) => {
                     if account.available >= amount {
                         account.available -= amount;
                         self.tx_to_tr_info
@@ -48,80 +41,50 @@ impl TrProcessor {
                             .and_then::<(), _>(|_| panic!("Not unique tx! tx: {tx}"));
                     }
                 }
-                Tr::Dispute { client, tx } => {
-                    let account = self
-                        .client_to_account
-                        .entry(client)
-                        .or_insert_with(Account::new);
-                    if account.locked {
-                        continue;
-                    }
-
-                    match self.tx_to_tr_info.get_mut(&tx) {
-                        Some(TrInfo {
-                            client: tr_client,
-                            amount,
-                            has_disputed,
-                        }) if !*has_disputed && *tr_client == client => {
-                            *has_disputed = true;
-                            if amount.is_sign_positive(){
-                                account.available -= *amount;
-                                account.held += *amount;
-                            }
+                TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
+                    Some(TrInfo {
+                        client: tr_client,
+                        amount,
+                        has_disputed,
+                    }) if !*has_disputed && *tr_client == client => {
+                        *has_disputed = true;
+                        if amount.is_sign_positive() {
+                            account.available -= *amount;
+                            account.held += *amount;
                         }
-                        _ => (),
                     }
-                }
-                Tr::Resolve { client, tx } => {
-                    let account = self
-                        .client_to_account
-                        .entry(client)
-                        .or_insert_with(Account::new);
-                    if account.locked {
-                        continue;
-                    }
-
-                    match self.tx_to_tr_info.get(&tx) {
-                        Some(&TrInfo {
-                            client: tr_client,
-                            amount,
-                            has_disputed,
-                        }) if has_disputed && tr_client == client => {
-                            if amount >= 0.0 {
-                                account.available += amount;
-                                account.held -= amount;
-                            }
-                            self.tx_to_tr_info.remove(&tx);
+                    _ => (),
+                },
+                TrType::Resolve => match self.tx_to_tr_info.get(&tx) {
+                    Some(&TrInfo {
+                        client: tr_client,
+                        amount,
+                        has_disputed,
+                    }) if has_disputed && tr_client == client => {
+                        if amount >= 0.0 {
+                            account.available += amount;
+                            account.held -= amount;
                         }
-                        _ => (),
+                        self.tx_to_tr_info.remove(&tx);
                     }
-                }
-                Tr::Chargeback { client, tx } => {
-                    let account = self
-                        .client_to_account
-                        .entry(client)
-                        .or_insert_with(Account::new);
-                    if account.locked {
-                        continue;
-                    }
-
-                    match self.tx_to_tr_info.get(&tx) {
-                        Some(&TrInfo {
-                            client: tr_client,
-                            amount,
-                            has_disputed,
-                        }) if has_disputed && tr_client == client => {
-                            if amount.is_sign_positive() {
-                                account.held -= amount;
-                            } else {
-                                account.available -= amount;
-                            }
-                            account.locked = true;
-                            self.tx_to_tr_info.remove(&tx);
+                    _ => (),
+                },
+                TrType::Chargeback => match self.tx_to_tr_info.get(&tx) {
+                    Some(&TrInfo {
+                        client: tr_client,
+                        amount,
+                        has_disputed,
+                    }) if has_disputed && tr_client == client => {
+                        if amount.is_sign_positive() {
+                            account.held -= amount;
+                        } else {
+                            account.available -= amount;
                         }
-                        _ => (),
+                        account.locked = true;
+                        self.tx_to_tr_info.remove(&tx);
                     }
-                }
+                    _ => (),
+                },
             }
         }
     }
@@ -138,42 +101,23 @@ impl TrProcessor {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::TrType::*;
 
     #[test]
     fn deposit_withdrawal() {
         let mut processor = TrProcessor::new();
         let trs = [
-            Tr::Deposit {
-                client: 1,
-                tx: 1,
-                amount: 100.0,
-            },
-            Tr::Withdrawal {
-                client: 1,
-                tx: 2,
-                amount: 50.0,
-            },
-            Tr::Deposit {
-                client: 2,
-                tx: 3,
-                amount: 200.0,
-            },
-            Tr::Deposit {
-                client: 1,
-                tx: 4,
-                amount: 200.0,
-            },
+            Tr::new(Withdrawal(100.0), 1, 1),
+            Tr::new(Withdrawal(50.0), 1, 2),
+            Tr::new(Withdrawal(200.0), 2, 3),
+            Tr::new(Withdrawal(200.0), 1, 4),
         ];
 
         processor.process(trs.into_iter());
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 250.0);
 
-        processor.process_single(Tr::Withdrawal {
-            client: 1,
-            tx: 5,
-            amount: 251.0,
-        });
+        processor.process_single(Tr::new(Withdrawal(251.0), 1, 5));
         assert_eq!(info.total, 250.0, "Not sufficient funds");
     }
 
@@ -182,43 +126,35 @@ mod test {
         let mut processor = TrProcessor::new();
         processor.process(
             [
-                Tr::Deposit {
-                    client: 1,
-                    tx: 1,
-                    amount: 200.0,
-                },
-                Tr::Withdrawal {
-                    client: 1,
-                    tx: 2,
-                    amount: 100.0,
-                },
+                Tr::new(Deposit(200.0), 1, 1),
+                Tr::new(Withdrawal(100.0), 1, 2),
             ]
             .into_iter(),
         );
 
-        processor.process_single(Tr::Dispute { client: 1, tx: 2 });
+        processor.process_single(Tr::new(Dispute, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 100.0);
         assert_eq!(info.held, 0.0);
 
-        processor.process_single(Tr::Resolve { client: 1, tx: 2 });
+        processor.process_single(Tr::new(Resolve, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 100.0);
         assert_eq!(info.held, 0.0);
 
-        processor.process_single(Tr::Resolve { client: 1, tx: 1 });
+        processor.process_single(Tr::new(Resolve, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(
             info.available, 100.0,
             "Can not resolve not disputed transaction"
         );
 
-        processor.process_single(Tr::Dispute { client: 1, tx: 1 });
+        processor.process_single(Tr::new( Dispute, 1,  1 ));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, -100.0);
         assert_eq!(info.held, 200.0);
 
-        processor.process_single(Tr::Resolve { client: 1, tx: 1 });
+        processor.process_single(Tr::new(Resolve,  1, 1 ));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 100.0);
         assert_eq!(info.held, 0.0);
@@ -229,39 +165,31 @@ mod test {
         let mut processor = TrProcessor::new();
         processor.process(
             [
-                Tr::Deposit {
-                    client: 1,
-                    tx: 1,
-                    amount: 200.0,
-                },
-                Tr::Withdrawal {
-                    client: 1,
-                    tx: 2,
-                    amount: 100.0,
-                },
+                Tr::new(Deposit(200.0), 1, 1),
+                Tr::new(Withdrawal(100.0), 1, 2),
             ]
             .into_iter(),
         );
 
-        processor.process_single(Tr::Chargeback { client: 1, tx: 2 });
+        processor.process_single(Tr::new(Chargeback, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(
             info.available, 100.0,
             "Can not chargeback not disputed transaction"
         );
 
-        processor.process_single(Tr::Dispute { client: 1, tx: 2 });
+        processor.process_single(Tr::new(Dispute, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 100.0);
         assert_eq!(info.held, 0.0);
 
-        processor.process_single(Tr::Chargeback { client: 1, tx: 2 });
+        processor.process_single(Tr::new(Chargeback, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 200.0);
         assert_eq!(info.held, 0.0);
         assert!(info.locked);
 
-        processor.process_single(Tr::Dispute { client: 1, tx: 1 });
+        processor.process_single(Tr::new(Dispute, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, 200.0, "Account is locked. Same balance");
     }
