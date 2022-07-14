@@ -1,27 +1,29 @@
 use serde::{Deserialize, Serialize};
 
+type Money = f64;
+
 //usage of #[serde(tag = "type")] is not possible because of bug
 //https://github.com/BurntSushi/rust-csv/issues/278
 #[derive(Deserialize)]
-pub(crate) struct TrCsvRow {
+pub(crate) struct TrRecord {
     #[serde(alias = "type")]
     tr_type: String,
     client: u16,
     tx: u32,
-    amount: Option<f64>,
+    amount: Option<Money>,
 }
 
-//client, available, held, total, locked
+//Client, available, held, total, locked
 #[derive(Serialize)]
-pub struct ClientInfo {
+pub struct ClientRecord {
     pub(crate) client: u16,
-    pub(crate) available: f64,
-    pub(crate) held: f64,
-    pub(crate) total: f64,
+    pub(crate) available: Money,
+    pub(crate) held: Money,
+    pub(crate) total: Money,
     pub(crate) locked: bool,
 }
 
-impl From<(&u16, &Account)> for ClientInfo {
+impl From<(&u16, &Account)> for ClientRecord {
     fn from((client, account): (&u16, &Account)) -> Self {
         Self {
             client: *client,
@@ -33,9 +35,10 @@ impl From<(&u16, &Account)> for ClientInfo {
     }
 }
 
+
 pub struct Account {
-    pub available: f64,
-    pub held: f64,
+    pub available: Money,
+    pub held: Money,
     pub locked: bool,
 }
 
@@ -49,19 +52,20 @@ impl Account {
     }
 }
 
+// TODO: use struct Tr and TrType
 #[derive(Debug, Copy, Clone)]
 pub enum Tr {
-    Deposit { client: u16, tx: u32, amount: f64 },
-    Withdrawal { client: u16, tx: u32, amount: f64 },
+    Deposit { client: u16, tx: u32, amount: Money },
+    Withdrawal { client: u16, tx: u32, amount: Money },
     Dispute { client: u16, tx: u32 },
     Resolve { client: u16, tx: u32 },
     Chargeback { client: u16, tx: u32 },
 }
 
-impl TryFrom<TrCsvRow> for Tr {
+impl TryFrom<TrRecord> for Tr {
     type Error = &'static str;
 
-    fn try_from(csv_row: TrCsvRow) -> std::result::Result<Self, Self::Error> {
+    fn try_from(csv_row: TrRecord) -> std::result::Result<Self, Self::Error> {
         let client = csv_row.client;
         let tx = csv_row.tx;
 
@@ -82,4 +86,14 @@ impl TryFrom<TrCsvRow> for Tr {
     }
 }
 
-//TODO: create transaction info struct. Store there client, tx, amount
+pub struct TrInfo {
+    pub(crate) client: u16,
+    pub(crate) amount: Money,
+    pub(crate) has_disputed: bool,
+}
+
+impl TrInfo {
+    pub fn new(client: u16, amount: Money) -> Self {
+        Self { client, amount, has_disputed: false }
+    }
+}

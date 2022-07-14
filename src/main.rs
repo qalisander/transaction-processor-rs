@@ -7,7 +7,6 @@ use crate::data::*;
 use crate::tr_processor::TrProcessor;
 
 
-// TODO: abstract over iterator of transaction
 // TODO: pay attention to f64, use decimal https://docs.rs/rust_decimal/latest/rust_decimal/
 // TODO: use another writer io::stderr() for errors
 
@@ -18,7 +17,7 @@ fn main() -> Result<()> {
         .comment(Some(b'#'))
         .from_reader(io::stdin());
     for result in reader.deserialize() {
-        let tr_csv_row: TrCsvRow = result?;
+        let tr_csv_row: TrRecord = result?;
         let tr: Tr = tr_csv_row.try_into().unwrap();
         println!("{:?}", tr);
     }
@@ -26,7 +25,7 @@ fn main() -> Result<()> {
     let processor = TrProcessor::new();
     
     let mut writer = csv::Writer::from_writer(io::stdout());
-    for info in processor.get_client_infos() {
+    for info in processor.get_client_records() {
         writer.serialize(info)?;
     }
 
