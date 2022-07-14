@@ -13,7 +13,7 @@ pub(crate) struct TrCsvRow {
 
 //client, available, held, total, locked
 #[derive(Serialize)]
-pub(crate) struct ClientInfo{
+pub struct ClientInfo {
     client: u16,
     available: f64,
     held: f64,
@@ -21,15 +21,27 @@ pub(crate) struct ClientInfo{
     locked: bool,
 }
 
-pub(crate) struct Account {
+impl From<(&u16, &Account)> for ClientInfo {
+    fn from((client, account): (&u16, &Account)) -> Self {
+        Self {
+            client: *client,
+            available: account.available,
+            held: account.held,
+            total: account.available + account.held,
+            locked: account.locked,
+        }
+    }
+}
+
+pub struct Account {
     available: f64,
     held: f64,
     locked: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) enum Tr {
-    Deposit { client: u16, tx: u32,  amount: f64 },
+pub enum Tr {
+    Deposit { client: u16, tx: u32, amount: f64 },
     Withdrawal { client: u16, tx: u32, amount: f64 },
     Dispute { client: u16, tx: u32 },
     Resolve { client: u16, tx: u32 },
@@ -52,9 +64,9 @@ impl TryFrom<TrCsvRow> for Tr {
                 None => Err("Not valid amount!"),
                 Some(amount) => Ok(Tr::Withdrawal { client, tx, amount }),
             },
-            "dispute" => Ok(Tr::Dispute {tx, client}),
-            "resolve" => Ok(Tr::Resolve {tx, client}),
-            "chargeback" => Ok(Tr::Chargeback {tx, client}),
+            "dispute" => Ok(Tr::Dispute { tx, client }),
+            "resolve" => Ok(Tr::Resolve { tx, client }),
+            "chargeback" => Ok(Tr::Chargeback { tx, client }),
             _ => Err("Not valid csv row!"),
         }
     }
