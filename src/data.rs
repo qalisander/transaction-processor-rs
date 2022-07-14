@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Serialize};
 
 type Money = f64;
@@ -6,7 +7,7 @@ type Money = f64;
 //https://github.com/BurntSushi/rust-csv/issues/278
 #[derive(Deserialize)]
 pub(crate) struct TrRecord {
-    #[serde(alias = "type")]
+    #[serde(rename = "type")]
     tr_type: String,
     client: u16,
     tx: u32,
@@ -63,25 +64,25 @@ pub enum Tr {
 }
 
 impl TryFrom<TrRecord> for Tr {
-    type Error = &'static str;
+    type Error = Error;
 
-    fn try_from(csv_row: TrRecord) -> std::result::Result<Self, Self::Error> {
+    fn try_from(csv_row: TrRecord) -> Result<Self> {
         let client = csv_row.client;
         let tx = csv_row.tx;
 
         match &*csv_row.tr_type {
             "deposit" => match csv_row.amount {
-                None => Err("Not valid amount!"),
+                None => Err(anyhow!("Not valid amount!")),
                 Some(amount) => Ok(Tr::Deposit { client, tx, amount }),
             },
             "withdrawal" => match csv_row.amount {
-                None => Err("Not valid amount!"),
+                None => Err(anyhow!("Not valid amount!")),
                 Some(amount) => Ok(Tr::Withdrawal { client, tx, amount }),
             },
             "dispute" => Ok(Tr::Dispute { tx, client }),
             "resolve" => Ok(Tr::Resolve { tx, client }),
             "chargeback" => Ok(Tr::Chargeback { tx, client }),
-            _ => Err("Not valid csv row!"),
+            _ => Err(anyhow!("Not valid csv row!")),
         }
     }
 }
