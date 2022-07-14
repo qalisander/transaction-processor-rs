@@ -32,9 +32,9 @@ impl From<(&u16, &Account)> for ClientRecord {
     fn from((client, account): (&u16, &Account)) -> Self {
         Self {
             client: *client,
-            available: account.available,
-            held: account.held,
-            total: account.available + account.held,
+            available: account.available.round_dp(4),
+            held: account.held.round_dp(4),
+            total: (account.available + account.held).round_dp(4),
             locked: account.locked,
         }
     }

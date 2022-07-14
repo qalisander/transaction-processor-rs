@@ -1,4 +1,5 @@
 use crate::data::*;
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
 pub struct TrProcessor {
@@ -14,8 +15,11 @@ impl TrProcessor {
         }
     }
 
-    pub fn process(&mut self, trs: impl Iterator<Item = Tr>) {
-        for tr in trs {
+    pub fn try_process<'a>(
+        &'a mut self,
+        trs: impl Iterator<Item = Tr> + 'a,
+    ) -> impl Iterator<Item = Result<()>> + 'a {
+        trs.map(|tr| {
             let tx = tr.tx;
             let client = tr.client;
             let account = self
@@ -23,58 +27,96 @@ impl TrProcessor {
                 .entry(client)
                 .or_insert_with(Account::new);
             if account.locked {
-                continue;
+                return Err(anyhow!("Account is blocked! tx: {tx}"));
             }
 
             match tr.tp {
                 TrType::Deposit(amount) => {
                     account.available += amount;
-                    self.tx_to_tr_info
+                    let is_unique = self
+                        .tx_to_tr_info
                         .insert(tx, TrInfo::new(client, amount))
-                        .and_then::<(), _>(|_| panic!("Not unique tx! tx: {tx}"));
+                        .is_none();
+                    if !is_unique {
+                        return Err(anyhow!("Not unique tx! tx: {tx}"));
+                    }
                 }
                 TrType::Withdrawal(amount) => {
                     if account.available >= amount {
                         account.available -= amount;
-                        self.tx_to_tr_info
+                        let is_unique = self
+                            .tx_to_tr_info
                             .insert(tx, TrInfo::new(client, -amount))
-                            .and_then::<(), _>(|_| panic!("Not unique tx! tx: {tx}"));
+                            .is_none();
+                        if !is_unique {
+                            return Err(anyhow!("Not unique tx! tx: {tx}"));
+                        }
                     }
                 }
-                TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
-                    Some(TrInfo {
+                TrType::Dispute => {
+                    if let Some(TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) if !*has_disputed && *tr_client == client => {
+                    }) = self.tx_to_tr_info.get_mut(&tx)
+                    {
+                        if *has_disputed {
+                            return Err(anyhow!("Already under dispute! tx: {tx}"));
+                        }
+                        if *tr_client != client {
+                            return Err(anyhow!(
+                                "Invalid client id! tx: {tx}; client: {tr_client}"
+                            ));
+                        }
+
                         *has_disputed = true;
                         if amount.is_sign_positive() {
                             account.available -= *amount;
                             account.held += *amount;
                         }
                     }
-                    _ => (),
-                },
-                TrType::Resolve => match self.tx_to_tr_info.get(&tx) {
-                    Some(&TrInfo {
+                }
+                TrType::Resolve => {
+                    if let Some(&TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) if has_disputed && tr_client == client => {
+                    }) = self.tx_to_tr_info.get(&tx)
+                    {
+                        if !has_disputed {
+                            return Err(anyhow!("Resolving not disputed transaction! tx: {tx}"));
+                        }
+                        if tr_client != client {
+                            return Err(anyhow!(
+                                "Invalid client id! tx: {tx}; client: {tr_client}"
+                            ));
+                        }
+
                         if amount.is_sign_positive() {
                             account.available += amount;
                             account.held -= amount;
                         }
                         self.tx_to_tr_info.remove(&tx);
                     }
-                    _ => (),
-                },
-                TrType::Chargeback => match self.tx_to_tr_info.get(&tx) {
-                    Some(&TrInfo {
+                }
+                TrType::Chargeback => {
+                    if let Some(&TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) if has_disputed && tr_client == client => {
+                    }) = self.tx_to_tr_info.get(&tx)
+                    {
+                        if !has_disputed {
+                            return Err(anyhow!(
+                                "Charge backing not disputed transaction! tx: {tx}"
+                            ));
+                        }
+                        if tr_client != client {
+                            return Err(anyhow!(
+                                "Invalid client id! tx: {tx}; client: {tr_client}"
+                            ));
+                        }
+
                         if amount.is_sign_positive() {
                             account.held -= amount;
                         } else {
@@ -83,14 +125,18 @@ impl TrProcessor {
                         account.locked = true;
                         self.tx_to_tr_info.remove(&tx);
                     }
-                    _ => (),
-                },
+                }
             }
-        }
+            Ok(())
+        })
     }
 
     pub fn get_client_records(&self) -> impl Iterator<Item = ClientRecord> + '_ {
         self.client_to_account.iter().map(ClientRecord::from)
+    }
+
+    pub fn process(&mut self, trs: impl Iterator<Item = Tr>) {
+        for _ in self.try_process(trs) {}
     }
 
     fn process_single(&mut self, tr: Tr) {
@@ -100,9 +146,9 @@ impl TrProcessor {
 
 #[cfg(test)]
 mod test {
-    use rust_decimal_macros::dec;
     use super::*;
     use crate::TrType::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn deposit_withdrawal() {
@@ -146,16 +192,17 @@ mod test {
         processor.process_single(Tr::new(Resolve, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(
-            info.available, dec!(100.0),
+            info.available,
+            dec!(100.0),
             "Can not resolve not disputed transaction"
         );
 
-        processor.process_single(Tr::new( Dispute, 1,  1 ));
+        processor.process_single(Tr::new(Dispute, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, dec!(-100.0));
         assert_eq!(info.held, dec!(200.0));
 
-        processor.process_single(Tr::new(Resolve,  1, 1 ));
+        processor.process_single(Tr::new(Resolve, 1, 1));
         let info = get_client_info(&processor, 1);
         assert_eq!(info.available, dec!(100.0));
         assert_eq!(info.held, dec!(0.0));
@@ -175,7 +222,8 @@ mod test {
         processor.process_single(Tr::new(Chargeback, 1, 2));
         let info = get_client_info(&processor, 1);
         assert_eq!(
-            info.available, dec!(100.0),
+            info.available,
+            dec!(100.0),
             "Can not chargeback not disputed transaction"
         );
 
@@ -192,7 +240,11 @@ mod test {
 
         processor.process_single(Tr::new(Dispute, 1, 1));
         let info = get_client_info(&processor, 1);
-        assert_eq!(info.available, dec!(200.0), "Account is locked. Same balance");
+        assert_eq!(
+            info.available,
+            dec!(200.0),
+            "Account is locked. Same balance"
+        );
     }
 
     fn get_client_info(processor: &TrProcessor, client: u16) -> ClientRecord {

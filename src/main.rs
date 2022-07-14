@@ -11,9 +11,6 @@ use crate::tr_processor::TrProcessor;
 mod data;
 mod tr_processor;
 
-// TODO: pay attention to f64, use decimal https://docs.rs/rust_decimal/latest/rust_decimal/
-// TODO: use another writer io::stderr() for errors
-
 fn main() {
     let string = args().nth(1).expect("No file argument!");
     let file = File::open(string).unwrap();
@@ -33,17 +30,22 @@ fn main() {
         })
         .inspect(|res| {
             if let Err(err) = res {
-                eprintln!("{}", err)
+                eprintln!("{err}")
             }
         })
         .flatten();
     
     let mut processor = TrProcessor::new();
-    processor.process(iter);
+    for res in processor.try_process(iter) {
+        if let Err(err) = res {
+            eprintln!("{err}")
+        }
+    }
+    
     let mut writer = csv::Writer::from_writer(io::stdout());
     for info in processor.get_client_records() {
         writer.serialize(info).unwrap_or_else(|err|{
-            eprintln!("{}", err)
+            eprintln!("{err}")
         });
     }
 }
