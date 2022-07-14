@@ -14,11 +14,11 @@ pub(crate) struct TrCsvRow {
 //client, available, held, total, locked
 #[derive(Serialize)]
 pub struct ClientInfo {
-    client: u16,
-    available: f64,
-    held: f64,
-    total: f64,
-    locked: bool,
+    pub(crate) client: u16,
+    pub(crate) available: f64,
+    pub(crate) held: f64,
+    pub(crate) total: f64,
+    pub(crate) locked: bool,
 }
 
 impl From<(&u16, &Account)> for ClientInfo {
@@ -34,9 +34,19 @@ impl From<(&u16, &Account)> for ClientInfo {
 }
 
 pub struct Account {
-    available: f64,
-    held: f64,
-    locked: bool,
+    pub available: f64,
+    pub held: f64,
+    pub locked: bool,
+}
+
+impl Account {
+    pub fn new() -> Self {
+        Self {
+            available: 0.0,
+            held: 0.0,
+            locked: false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -71,3 +81,5 @@ impl TryFrom<TrCsvRow> for Tr {
         }
     }
 }
+
+//TODO: create transaction info struct. Store there client, tx, amount

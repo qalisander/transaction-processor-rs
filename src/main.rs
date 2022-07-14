@@ -1,17 +1,15 @@
 mod tr_processor;
 mod data;
-
 use anyhow::Result;
 use csv::Trim;
-use std::fmt::Error;
 use std::io;
-
-
+use crate::data::*;
+use crate::tr_processor::TrProcessor;
 
 
 // TODO: abstract over iterator of transaction
-// TODO: pay attention to f64, use decimal
-// https://docs.rs/rust_decimal/latest/rust_decimal/
+// TODO: pay attention to f64, use decimal https://docs.rs/rust_decimal/latest/rust_decimal/
+// TODO: use another writer io::stderr() for errors
 
 fn main() -> Result<()> {
     let mut reader = csv::ReaderBuilder::new()
@@ -23,6 +21,13 @@ fn main() -> Result<()> {
         let tr_csv_row: TrCsvRow = result?;
         let tr: Tr = tr_csv_row.try_into().unwrap();
         println!("{:?}", tr);
+    }
+
+    let processor = TrProcessor::new();
+    
+    let mut writer = csv::Writer::from_writer(io::stdout());
+    for info in processor.get_client_infos() {
+        writer.serialize(info)?;
     }
 
     Ok(())
