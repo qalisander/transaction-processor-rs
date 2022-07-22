@@ -32,7 +32,9 @@ impl TrProcessor {
 
             match tr.tp {
                 TrType::Deposit(amount) => {
-                    account.available += amount;
+                    if amount.is_sign_negative() {
+                        return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
+                    }
                     let is_unique = self
                         .tx_to_tr_info
                         .insert(tx, TrInfo::new(client, amount))
@@ -40,10 +42,13 @@ impl TrProcessor {
                     if !is_unique {
                         return Err(anyhow!("Not unique tx! tx: {tx}"));
                     }
+                    account.available += amount;
                 }
                 TrType::Withdrawal(amount) => {
+                    if amount.is_sign_negative() {
+                        return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
+                    }
                     if account.available >= amount {
-                        account.available -= amount;
                         let is_unique = self
                             .tx_to_tr_info
                             .insert(tx, TrInfo::new(client, -amount))
@@ -51,15 +56,15 @@ impl TrProcessor {
                         if !is_unique {
                             return Err(anyhow!("Not unique tx! tx: {tx}"));
                         }
+                        account.available -= amount;
                     }
                 }
-                TrType::Dispute => {
-                    if let Some(TrInfo {
+                TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
+                    Some(TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) = self.tx_to_tr_info.get_mut(&tx)
-                    {
+                    }) => {
                         if *has_disputed {
                             return Err(anyhow!("Already under dispute! tx: {tx}"));
                         }
@@ -75,14 +80,16 @@ impl TrProcessor {
                             account.held += *amount;
                         }
                     }
-                }
-                TrType::Resolve => {
-                    if let Some(&TrInfo {
+                    None => {
+                        return Err(anyhow!("Tx not found for dispute! tx: {tx}"));
+                    }
+                },
+                TrType::Resolve => match self.tx_to_tr_info.get(&tx) {
+                    Some(&TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) = self.tx_to_tr_info.get(&tx)
-                    {
+                    }) => {
                         if !has_disputed {
                             return Err(anyhow!("Resolving not disputed transaction! tx: {tx}"));
                         }
@@ -98,14 +105,16 @@ impl TrProcessor {
                         }
                         self.tx_to_tr_info.remove(&tx);
                     }
-                }
-                TrType::Chargeback => {
-                    if let Some(&TrInfo {
+                    None => {
+                        return Err(anyhow!("Tx not found for resolve! tx: {tx}"));
+                    }
+                },
+                TrType::Chargeback => match self.tx_to_tr_info.get(&tx) {
+                    Some(&TrInfo {
                         client: tr_client,
                         amount,
                         has_disputed,
-                    }) = self.tx_to_tr_info.get(&tx)
-                    {
+                    }) => {
                         if !has_disputed {
                             return Err(anyhow!(
                                 "Trying to chargeback not disputed transaction! tx: {tx}"
@@ -125,7 +134,10 @@ impl TrProcessor {
                         account.locked = true;
                         self.tx_to_tr_info.remove(&tx);
                     }
-                }
+                    None => {
+                        return Err(anyhow!("Tx not found for chargeback! tx: {tx}"));
+                    }
+                },
             }
             Ok(())
         })
@@ -245,6 +257,21 @@ mod test {
             dec!(200.0),
             "Account is locked. Same balance"
         );
+    }
+
+    #[test]
+    fn negative_amount_test() {
+        let mut processor = TrProcessor::new();
+
+        processor.process_single(Tr::new(Deposit(dec!(-100)), 1, 1));
+        let client = get_client_info(&processor, 1);
+        assert_eq!(client.available, dec!(0));
+        assert_eq!(client.held, dec!(0));
+
+        processor.process_single(Tr::new(Withdrawal(dec!(-100)), 1, 2));
+        let client = get_client_info(&processor, 1);
+        assert_eq!(client.available, dec!(0));
+        assert_eq!(client.held, dec!(0));
     }
 
     fn get_client_info(processor: &TrProcessor, client: u16) -> ClientRecord {
