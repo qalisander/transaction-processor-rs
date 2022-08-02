@@ -102,6 +102,7 @@ impl TryFrom<TrRecord> for Tr {
     }
 }
 
+/// positive sign of amount means deposit transaction. Negative - withdrawal.
 pub struct TrInfo {
     pub(crate) client: u16,
     pub(crate) amount: Money,
