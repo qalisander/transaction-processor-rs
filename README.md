@@ -7,7 +7,7 @@ Rust decimal crate is used for better precision. Alas, 0.1 + 0.2 != 0.3_f64 is t
 
 With anyhow's divine assistance error handling became quite convenient.
 
-Bugs happens :)
+Bugs happen :)
 
 Assumptions
 - In case of disputing withdrawal transactions, held funds amount doesn't increase. As like available amount doesn't change. So client will not see any difference until dispute of withdrawal transaction will be chargebacked.
@@ -16,6 +16,8 @@ Assumptions
 - Amount of client's funds can become negative in case deposit transaction been disputed (amount of withdrawal grater than funds available). Any withdrawal won't happen because of negative amount. When chargeback occurs, client will be blocked anyway. Then debt collectors will do their job :)
 
 ### Changelog 
+0.3.0 Fixing transaction shadowing
+
 0.2.0 Fixing invalid behaviour with negative amount in deposit and withdrawal transactions.
 
 0.1.0 Initial version of toy transaction processing engine.

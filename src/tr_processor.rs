@@ -35,14 +35,14 @@ impl TrProcessor {
                     if amount.is_sign_negative() {
                         return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
                     }
-                    let is_unique = self
-                        .tx_to_tr_info
-                        .insert(tx, TrInfo::new(client, amount))
-                        .is_none();
-                    if !is_unique {
-                        return Err(anyhow!("Not unique tx! tx: {tx}"));
+
+                    match self.tx_to_tr_info.get(&tx) {
+                        None => {
+                            self.tx_to_tr_info.insert(tx, TrInfo::new(client, amount));
+                            account.available += amount
+                        }
+                        Some(_) => return Err(anyhow!("Not unique tx! tx: {tx}")),
                     }
-                    account.available += amount;
                 }
                 TrType::Withdrawal(amount) => {
                     if amount.is_sign_negative() {
@@ -56,14 +56,13 @@ impl TrProcessor {
                         ));
                     }
 
-                    let is_unique = self
-                        .tx_to_tr_info
-                        .insert(tx, TrInfo::new(client, -amount))
-                        .is_none();
-                    if !is_unique {
-                        return Err(anyhow!("Not unique tx! tx: {tx}"));
+                    match self.tx_to_tr_info.get(&tx) {
+                        None => {
+                            self.tx_to_tr_info.insert(tx, TrInfo::new(client, -amount));
+                            account.available -= amount;
+                        }
+                        Some(_) => return Err(anyhow!("Not unique tx! tx: {tx}")),
                     }
-                    account.available -= amount;
                 }
                 TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
                     Some(TrInfo {
@@ -278,6 +277,19 @@ mod test {
         let client = get_client_info(&processor, 1);
         assert_eq!(client.available, dec!(0));
         assert_eq!(client.held, dec!(0));
+    }
+
+    #[test]
+    fn transaction_shadowing_test() {
+        let mut processor = TrProcessor::new();
+
+        processor.process_single(Tr::new(Deposit(dec!(100)), 1, 1));
+        // Transaction with same tx as previous should not leave side effects
+        processor.process_single(Tr::new(Deposit(dec!(200)), 1, 1));
+
+        processor.process_single(Tr::new(Dispute, 1, 1));
+        let client = get_client_info(&processor, 1);
+        assert_eq!(client.held, dec!(100));
     }
 
     fn get_client_info(processor: &TrProcessor, client: u16) -> ClientRecord {
