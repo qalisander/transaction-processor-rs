@@ -12,4 +12,10 @@ Bugs happens :)
 Assumptions
 - In case of disputing withdrawal transactions, held funds amount doesn't increase. As like available amount doesn't change. So client will not see any difference until dispute of withdrawal transaction will be chargebacked.
 - Depositing or withdrawing negative amount of money will be ignored with a corresponding error.
-- If client (id) specified by the dispute/resolved/chargeback doesn't coincide with existing tr (id). This transaction will be ignored, and logged in error output.
+- If client (id) specified by the dispute/resolved/chargeback doesn't math with existing tr (id). This transaction will be ignored, and logged in error output.
+- Amount of client's funds can become negative in case deposit transaction been disputed (amount of withdrawal grater than funds available). Any withdrawal won't happen because of negative amount. When chargeback occurs, client will be blocked anyway. Then debt collectors will do their job :)
+
+### Changelog 
+0.2.0 Fixing invalid behaviour with negative amount in deposit and withdrawal transactions.
+
+0.1.0 Initial version of toy transaction processing engine.

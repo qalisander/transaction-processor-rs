@@ -48,16 +48,22 @@ impl TrProcessor {
                     if amount.is_sign_negative() {
                         return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
                     }
-                    if account.available >= amount {
-                        let is_unique = self
-                            .tx_to_tr_info
-                            .insert(tx, TrInfo::new(client, -amount))
-                            .is_none();
-                        if !is_unique {
-                            return Err(anyhow!("Not unique tx! tx: {tx}"));
-                        }
-                        account.available -= amount;
+                    if account.available < amount {
+                        let available = account.available;
+                        return Err(anyhow!(
+                            "Not enough funds!: tx: {tx}; client: {client}; \
+                            available: {available}; amount: {amount})"
+                        ));
                     }
+
+                    let is_unique = self
+                        .tx_to_tr_info
+                        .insert(tx, TrInfo::new(client, -amount))
+                        .is_none();
+                    if !is_unique {
+                        return Err(anyhow!("Not unique tx! tx: {tx}"));
+                    }
+                    account.available -= amount;
                 }
                 TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
                     Some(TrInfo {
