@@ -1,6 +1,7 @@
 use crate::data::*;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+use rust_decimal_macros::dec;
 
 pub struct TrProcessor {
     tx_to_tr_info: HashMap<u32, TrInfo>,
@@ -32,8 +33,8 @@ impl TrProcessor {
 
             match tr.tp {
                 TrType::Deposit(amount) => {
-                    if amount.is_sign_negative() {
-                        return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
+                    if amount <= dec!(0) {
+                        return Err(anyhow!("Amount is negative or zero!: tx: {tx}; amount: {amount})"));
                     }
 
                     match self.tx_to_tr_info.get(&tx) {
@@ -45,8 +46,8 @@ impl TrProcessor {
                     }
                 }
                 TrType::Withdrawal(amount) => {
-                    if amount.is_sign_negative() {
-                        return Err(anyhow!("Amount is negative!: tx: {tx}; amount: {amount})"));
+                    if amount <= dec!(0) {
+                        return Err(anyhow!("Amount is negative or zero!: tx: {tx}; amount: {amount})"));
                     }
                     if account.available < amount {
                         let available = account.available;
@@ -60,8 +61,9 @@ impl TrProcessor {
                         None => {
                             self.tx_to_tr_info.insert(tx, TrInfo::new(client, -amount));
                             account.available -= amount;
-                        }
+                        },
                         Some(_) => return Err(anyhow!("Not unique tx! tx: {tx}")),
+                        
                     }
                 }
                 TrType::Dispute => match self.tx_to_tr_info.get_mut(&tx) {
