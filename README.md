@@ -1,4 +1,4 @@
-# tr_processor
+# Transaction Processor
 Simple toy transaction processing engine, that reads a series of transactions from a CSV, updates client accounts.
 
 The transaction processor uses memory storage with two hashmaps. Also, there is a point to consider persistent data structures (https://github.com/orium/rpds), in case of tremendous amount of transactions. Especially when few disputes occurs, there is no point to store all transactions in memory during program execution.

@@ -164,7 +164,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tr_processor"
+name = "transaction-processor-rs"
 version = "0.3.0"
 dependencies = [
  "anyhow",
